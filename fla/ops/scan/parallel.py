@@ -78,7 +78,7 @@ def afak_fwd_kernel(
             block_shape=(1, 1, BLOCK_SIZE_S),
             order=(0, 1, 2),
         )
-        tl.store(y_block_ptr, o) # (1, 1, BLOCK_SIZE_S)
+        tl.store(y_block_ptr, o.to(y_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_S)
     else:
         w_first_id = (sw_block_id - num_s_blocks) * BLOCK_SIZE_W
         # Fetch the key at [b_id, t_id-W+1+(w_block_id*BLOCK_SIZE_W):t_id+(w_block_id*BLOCK_SIZE_W), :]
@@ -100,7 +100,7 @@ def afak_fwd_kernel(
             block_shape=(1, 1, BLOCK_SIZE_W),
             order=(0, 1, 2),
         )
-        tl.store(y_block_ptr, y[None, :]) # (1, 1, BLOCK_SIZE_W)
+        tl.store(y_block_ptr, y[None, :].to(y_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_W)
 
 @triton.autotune(
     configs=[
@@ -187,7 +187,7 @@ def afak_bwd_kernel(
         block_shape=(1, 1, BLOCK_SIZE_C),
         order=(0, 1, 2),
     )
-    tl.store(dq_block_ptr, dq) # (1, 1, BLOCK_SIZE_C)
+    tl.store(dq_block_ptr, dq.to(dq_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_C)
 
     # Calculate the gradients for states while we're at it
     # Fetch the query at [b_id, t_id, c_first_id:c_first_id+BLOCK_SIZE_C]
@@ -211,7 +211,7 @@ def afak_bwd_kernel(
         block_shape=(1, 1, S, BLOCK_SIZE_C),
         order=(0, 1, 2, 3),
     )
-    tl.store(ds_block_ptr, ds) # (1, 1, S, BLOCK_SIZE_C)
+    tl.store(ds_block_ptr, ds.to(ds_block_ptr.dtype.element_ty)) # (1, 1, S, BLOCK_SIZE_C)
 
     # Then calculate the gradients for k
     # same thing here, let's just make the ptr manually
@@ -240,7 +240,7 @@ def afak_bwd_kernel(
         block_shape=(1, 1, BLOCK_SIZE_C),
         order=(0, 1, 2),
     )
-    tl.store(dk_block_ptr, dk.reshape(1, 1, BLOCK_SIZE_C)) # (1, 1, BLOCK_SIZE_C)
+    tl.store(dk_block_ptr, dk.reshape(1, 1, BLOCK_SIZE_C).to(dk_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_C)
     
 class AttendFoldedAllKeysTriton(torch.autograd.Function):
     # @torch.compiler.disable
@@ -376,7 +376,7 @@ def afav_fwd_kernel(
         block_shape=(1, 1, BLOCK_SIZE_C),
         order=(0, 1, 2),
     )
-    tl.store(y_block_ptr, y[None, :]) # (1, 1, BLOCK_SIZE_C)
+    tl.store(y_block_ptr, y[None, :].to(y_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_C)
 
 @triton.autotune(
     configs=[
@@ -462,7 +462,7 @@ def afav_bwd_kernel(
             block_shape=(1, 1, BLOCK_SIZE_W),
             order=(0, 1, 2),
         )
-        tl.store(dsv_block_ptr, dsv[None, :]) # (1, 1, BLOCK_SIZE_W)
+        tl.store(dsv_block_ptr, dsv[None, :].to(dsv_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_W)
 
         # Store the result
         # need to make a ptr manually because make_block_ptr doesn't support masks
@@ -471,7 +471,7 @@ def afav_bwd_kernel(
         dv_block_ptr = dv_base + (t_id - W + 1 + (w_first_id + tw_offs[:, None])) * C + c_offs[None, :]
         mask = w_first_id + tl.arange(0, BLOCK_SIZE_W)[:, None] > (W - t_id - 2)
         # now we have to atomically add the gradients to the original values
-        tl.atomic_add(dv_block_ptr[None, :], dv)
+        tl.atomic_add(dv_block_ptr[None, :], dv.to(dv_block_ptr.dtype.element_ty))
     else:
         s_first_id = sw_block_id * BLOCK_SIZE_S
         # Here we calculate the gradients for s[:, :, :S] and for states
@@ -523,7 +523,7 @@ def afav_bwd_kernel(
             block_shape=(1, 1, BLOCK_SIZE_S),
             order=(0, 1, 2),
         )
-        tl.store(dss_block_ptr, dss) # (1, 1, BLOCK_SIZE_S)
+        tl.store(dss_block_ptr, dss.to(dss_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_S)
         
         # Store the result gradients of states at [b_id, t_id, s_first_id:s_first_id+BLOCK_SIZE_S, :]
         dstates_block_ptr = tl.make_block_ptr(
@@ -534,7 +534,7 @@ def afav_bwd_kernel(
             block_shape=(1, 1, BLOCK_SIZE_S, C),
             order=(0, 1, 2, 3),
         )
-        tl.store(dstates_block_ptr, dstates) # (1, 1, BLOCK_SIZE_S, C)
+        tl.store(dstates_block_ptr, dstates.to(dstates_block_ptr.dtype.element_ty)) # (1, 1, BLOCK_SIZE_S, C)
 
 class AccumulateFoldedAllValuesTriton(torch.autograd.Function):
     # @torch.compiler.disable
@@ -663,8 +663,8 @@ def cg2d_fwd_kernel(
             # Update gates
             gi_targets *= gi_adders # (BLOCK_SIZE, BLOCK_SIZE_S)
             
-            tl.store(xg_targets_ptr, xg_targets, mask=block_s_c_mask) # (BLOCK_SIZE, BLOCK_SIZE_S, BLOCK_SIZE_C)
-            tl.store(gi_targets_ptr, gi_targets, mask=block_s_mask) # (BLOCK_SIZE, BLOCK_SIZE_S)
+            tl.store(xg_targets_ptr, xg_targets.to(xg_targets_ptr.dtype.element_ty), mask=block_s_c_mask) # (BLOCK_SIZE, BLOCK_SIZE_S, BLOCK_SIZE_C)
+            tl.store(gi_targets_ptr, gi_targets.to(gi_targets_ptr.dtype.element_ty), mask=block_s_mask) # (BLOCK_SIZE, BLOCK_SIZE_S)
 
 @triton.autotune(
     configs=[
@@ -736,8 +736,8 @@ def cg2d_gxg_bwd_kernel(
             go_targets += go_adders * gi_targets[:, :, None] # (BLOCK_SIZE, BLOCK_SIZE_S, BLOCK_SIZE_C)
             gi_targets *= gi_adders # (BLOCK_SIZE, BLOCK_SIZE_S)
             
-            tl.store(go_targets_ptr, go_targets, mask=block_s_c_mask) # (BLOCK_SIZE, BLOCK_SIZE_S, BLOCK_SIZE_C)
-            tl.store(gi_targets_ptr, gi_targets, mask=block_s_mask) # (BLOCK_SIZE, BLOCK_SIZE_S)
+            tl.store(go_targets_ptr, go_targets.to(go_targets_ptr.dtype.element_ty), mask=block_s_c_mask) # (BLOCK_SIZE, BLOCK_SIZE_S, BLOCK_SIZE_C)
+            tl.store(gi_targets_ptr, gi_targets.to(gi_targets_ptr.dtype.element_ty), mask=block_s_mask) # (BLOCK_SIZE, BLOCK_SIZE_S)
 
 @triton.autotune(
     configs=[
@@ -815,7 +815,7 @@ def cg2d_ggi_bwd_kernel(
     # Need to use atomic add for accumulation between S blocks, so we also need to use manual pointer bc it's what atomic add accepts
     grad_gi_block_ptr = grad_gi_base + t_offs[:, None] * S + s_offs[None, :]
     grad_gi_mask = t_mask[:, None] & s_mask[None, :]
-    tl.atomic_add(grad_gi_block_ptr[None, :], grad_gi, mask=grad_gi_mask[None, :])
+    tl.atomic_add(grad_gi_block_ptr[None, :], grad_gi.to(grad_gi_block_ptr.dtype.element_ty), mask=grad_gi_mask[None, :])
 
 class CumulativeGating2DTriton(torch.autograd.Function):
     # @torch.compiler.disable
