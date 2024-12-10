@@ -471,7 +471,7 @@ def afav_bwd_kernel(
         dv_block_ptr = dv_base + (t_id - W + 1 + (w_first_id + tw_offs[:, None])) * C + c_offs[None, :]
         mask = w_first_id + tl.arange(0, BLOCK_SIZE_W)[:, None] > (W - t_id - 2)
         # now we have to atomically add the gradients to the original values
-        tl.atomic_add(dv_block_ptr[None, :], dv.to(dv_block_ptr.dtype.element_ty))
+        tl.atomic_add(dv_block_ptr[None, :], dv)
     else:
         s_first_id = sw_block_id * BLOCK_SIZE_S
         # Here we calculate the gradients for s[:, :, :S] and for states
@@ -574,7 +574,7 @@ class AccumulateFoldedAllValuesTriton(torch.autograd.Function):
         
         gs = torch.zeros_like(s).contiguous()
         # for gv we want an additional W at the start of the time dimension bc we can't mask atomic add
-        gv = torch.zeros((B, T+W-1, C), dtype=v.dtype, device=v.device).contiguous()
+        gv = torch.zeros((B, T+W-1, C), device=v.device).contiguous()
         gst = torch.zeros_like(states).contiguous()
 
         # Launch kernel
@@ -584,7 +584,7 @@ class AccumulateFoldedAllValuesTriton(torch.autograd.Function):
         )
 
         # No need for the additional W at the start of the time dimension for gv
-        return gs, gv[:, W-1:], gst, None
+        return gs, gv[:, W-1:].to(s.dtype), gst, None
 
 @triton.autotune(
     configs=[
@@ -635,10 +635,10 @@ def cg2d_fwd_kernel(
     # nstages = tl.ceil(tl.log2(float(T))).to(tl.int32)
     offs = tl.arange(0, BLOCK_SIZE)
     
-    for stage in tl.static_range(nstages):
+    for stage in tl.range(nstages): # CHANGE BACK TO tl.static_range() IN FINAL VERSION
         group_stride = 1 << stage
         # Process multiple elements per thread using BLOCK_SIZE
-        for block_start in tl.static_range(0, T//2, BLOCK_SIZE):
+        for block_start in tl.range(0, T//2, BLOCK_SIZE):
             block_mask = offs < (T//2 - block_start)
             block_s_mask = block_mask[:, None] & s_mask[None, :]
             block_s_c_mask = block_mask[:, None, None] & s_mask[None, :, None] & c_mask[None, None, :]
@@ -710,7 +710,7 @@ def cg2d_gxg_bwd_kernel(
     # nstages = tl.ceil(tl.log2(float(T))).to(tl.int32)
     offs = tl.arange(0, BLOCK_SIZE)
     
-    for stage in tl.static_range(nstages):
+    for stage in tl.range(nstages): # CHANGE BACK TO tl.static_range() IN FINAL VERSION
         group_stride = 1 << stage
         for block_start in tl.range(0, T//2, BLOCK_SIZE):
             block_mask = offs < (T//2 - block_start)
@@ -815,7 +815,7 @@ def cg2d_ggi_bwd_kernel(
     # Need to use atomic add for accumulation between S blocks, so we also need to use manual pointer bc it's what atomic add accepts
     grad_gi_block_ptr = grad_gi_base + t_offs[:, None] * S + s_offs[None, :]
     grad_gi_mask = t_mask[:, None] & s_mask[None, :]
-    tl.atomic_add(grad_gi_block_ptr[None, :], grad_gi.to(grad_gi_block_ptr.dtype.element_ty), mask=grad_gi_mask[None, :])
+    tl.atomic_add(grad_gi_block_ptr[None, :], grad_gi, mask=grad_gi_mask[None, :])
 
 class CumulativeGating2DTriton(torch.autograd.Function):
     # @torch.compiler.disable
@@ -852,7 +852,7 @@ class CumulativeGating2DTriton(torch.autograd.Function):
         gi = torch.cat((gi[:, 1:], torch.ones_like(gi[:, -1:])), dim=1).contiguous()
         grad_xg = grad_output.clone()
         y = torch.cat((torch.zeros_like(y[:, :1]), y[:, :-1]), dim=1).contiguous()
-        grad_gi = torch.zeros_like(gi)
+        grad_gi = torch.zeros((B, T, S), device=gi.device).contiguous() # torch.zeros_like(gi)
 
         # Launch kernel
         nstages = math.ceil(math.log2(T))
@@ -868,7 +868,7 @@ class CumulativeGating2DTriton(torch.autograd.Function):
             B, S, C, T,
         )
 
-        return grad_xg, grad_gi
+        return grad_xg, grad_gi.to(gi.dtype)
     
 # Parallel Semi-Compressed Attention
 def parallel_scan(
@@ -878,6 +878,7 @@ def parallel_scan(
     s: torch.Tensor,
     g: torch.Tensor,
     window_size: int,
+    num_heads: int,
     alibi: torch.Tensor,
     mask: torch.Tensor,
     scale: Optional[int] = None,
@@ -989,7 +990,7 @@ def parallel_scan(
     s = CumulativeGating2DTriton.apply(sg, gi) # states (B*H, T, S, C) at all time steps
     scores = AttendFoldedAllKeysTriton.apply(q, k, s, window_size) * scale # scores (B*H, T, S+W)
     # bring back to (B, H, T, S+W) to apply alibi with shape (H, T, S+W)
-    scores = scores.view(-1, T, S + window_size) + alibi[:, :T]
+    scores = scores.view(-1, num_heads, T, S + window_size) + alibi[:, :T]
     scores = scores.masked_fill(mask[:T] == 0, float('-inf'))
     scores = torch.softmax(scores, dim=-1).view(BH, T, S + window_size)
     o = AccumulateFoldedAllValuesTriton.apply(scores, v, s, window_size) # outputs (B*H, T, C)
