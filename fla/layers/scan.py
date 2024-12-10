@@ -14,7 +14,7 @@ from einops import rearrange
 from fla.modules import RMSNorm
 from fla.modules.activations import swish, sigmoid
 from fla.modules.layernorm import rms_norm_linear
-from fla.ops.scan import parallel_scan, recurrent_scan, naive_scan
+from fla.ops.scan import parallel_scan #, recurrent_scan, naive_scan
 
 if TYPE_CHECKING:
     from fla.models.utils import Cache

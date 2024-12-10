@@ -16,6 +16,7 @@ from fla.models.mamba2 import Mamba2Config, Mamba2ForCausalLM, Mamba2Model
 from fla.models.retnet import RetNetConfig, RetNetForCausalLM, RetNetModel
 from fla.models.rwkv6 import RWKV6Config, RWKV6ForCausalLM, RWKV6Model
 from fla.models.samba import SambaConfig, SambaForCausalLM, SambaModel
+from fla.models.scan import SCANConfig, SCANForCausalLM, SCANModel
 from fla.models.transformer import (TransformerConfig, TransformerForCausalLM,
                                     TransformerModel)
 
@@ -33,5 +34,6 @@ __all__ = [
     'RetNetConfig', 'RetNetForCausalLM', 'RetNetModel',
     'RWKV6Config', 'RWKV6ForCausalLM', 'RWKV6Model',
     'SambaConfig', 'SambaForCausalLM', 'SambaModel',
+    'SCANConfig', 'SCANForCausalLM', 'SCANModel',
     'TransformerConfig', 'TransformerForCausalLM', 'TransformerModel'
 ]

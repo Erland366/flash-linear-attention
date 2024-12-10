@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from .chunk import chunk_gsa
-from .fused_recurrent import fused_recurrent_gsa
+from .parallel import parallel_scan
 
 __all__ = [
-    'chunk_gsa',
-    'fused_recurrent_gsa'
+    'parallel_scan'
 ]

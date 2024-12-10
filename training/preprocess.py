@@ -95,7 +95,7 @@ def preprocess(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Preprocess and tokenize dataset")
     parser.add_argument("--dataset", default="HuggingFaceFW/fineweb-edu", help="Path or name of the dataset")
-    parser.add_argument("--name", default="sample-10BT", help="Name of the dataset configuration")
+    parser.add_argument("--name", default=None, help="Name of the dataset configuration")
     parser.add_argument("--split", default="train", help="Dataset split to process")
     parser.add_argument("--output", default="data", help="Output directory")
     parser.add_argument("--model", default="mistralai/Mistral-7B-v0.1", help="Model name for tokenizer")

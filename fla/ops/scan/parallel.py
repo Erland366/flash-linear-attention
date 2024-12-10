@@ -12,14 +12,14 @@ import triton.language as tl
 @triton.autotune(
     configs=[
         triton.Config({'BLOCK_SIZE_S': 16, 'BLOCK_SIZE_W': 16}, num_warps=2),
-        triton.Config({'BLOCK_SIZE_S': 16, 'BLOCK_SIZE_W': 16}, num_warps=4),
-        triton.Config({'BLOCK_SIZE_S': 16, 'BLOCK_SIZE_W': 16}, num_warps=8),
-        triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=2),
-        triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=4),
-        triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=8),
-        triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=2),
-        triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=4),
-        triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=8),
+        # triton.Config({'BLOCK_SIZE_S': 16, 'BLOCK_SIZE_W': 16}, num_warps=4),
+        # triton.Config({'BLOCK_SIZE_S': 16, 'BLOCK_SIZE_W': 16}, num_warps=8),
+        # triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=2),
+        # triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=4),
+        # triton.Config({'BLOCK_SIZE_S': 32, 'BLOCK_SIZE_W': 32}, num_warps=8),
+        # triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=2),
+        # triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=4),
+        # triton.Config({'BLOCK_SIZE_S': 64, 'BLOCK_SIZE_W': 64}, num_warps=8),
     ],
     key=[]
 )
@@ -107,8 +107,8 @@ def afak_fwd_kernel(
         triton.Config({
             'BLOCK_SIZE_C': bs_c,
         }, num_warps=warps)
-        for bs_c in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs_c in [16] #, 32, 64]
+        for warps in [2] # 4, 8]
     ],
     key=[]
 )
@@ -297,8 +297,8 @@ class AttendFoldedAllKeysTriton(torch.autograd.Function):
         triton.Config({
             'BLOCK_SIZE_C': bs_c,
         }, num_warps=warps)
-        for bs_c in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs_c in [16] #, 32, 64]
+        for warps in [2] # 4, 8]
     ],
     key=[]
 )
@@ -384,9 +384,9 @@ def afav_fwd_kernel(
             'BLOCK_SIZE_S': bs_s,
             'BLOCK_SIZE_W': bs_w
         }, num_warps=warps)
-        for bs_s in [16, 32, 64]
-        for bs_w in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs_s in [16] #, 32, 64]
+        for bs_w in [16] #, 32, 64]
+        for warps in [2] # 4, 8]
     ],
     key=[]
 )
@@ -593,10 +593,10 @@ class AccumulateFoldedAllValuesTriton(torch.autograd.Function):
             'BLOCK_SIZE_S': bs_s,
             'BLOCK_SIZE_C': bs_c
         }, num_warps=warps)
-        for bs in [16, 32, 64]
-        for bs_s in [16, 32, 64]
-        for bs_c in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs in [16] #, 32, 64]
+        for bs_s in [16] #, 32, 64]
+        for bs_c in [16] #, 32, 64]
+        for warps in [2] # 4, 8]
     ],
     key=[]
 )
@@ -673,10 +673,10 @@ def cg2d_fwd_kernel(
             'BLOCK_SIZE_S': bs_s,
             'BLOCK_SIZE_C': bs_c
         }, num_warps=warps)
-        for bs in [16, 32, 64]
-        for bs_s in [16, 32, 64]
-        for bs_c in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs in [16] #, 32, 64]
+        for bs_s in [16] #, 32, 64]
+        for bs_c in [16] #, 32, 64]
+        for warps in [2] #, 32, 64]
     ],
     key=[]
 )
@@ -746,10 +746,10 @@ def cg2d_gxg_bwd_kernel(
             'BLOCK_SIZE_S': bs_s,
             'BLOCK_SIZE_C': bs_c
         }, num_warps=warps)
-        for bs in [16, 32, 64]
-        for bs_s in [16, 32, 64]
-        for bs_c in [16, 32, 64]
-        for warps in [2, 4, 8]
+        for bs in [16] #, 32, 64]
+        for bs_s in [16] #, 32, 64]
+        for bs_c in [16] #, 32, 64]
+        for warps in [2] #, 4, 8]
     ],
     key=[]
 )

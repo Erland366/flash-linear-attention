@@ -96,8 +96,6 @@ class SCANBlock(nn.Module):
             expand_v=config.expand_v,
             num_heads=config.num_heads,
             num_kv_heads=config.num_kv_heads,
-            num_slots=config.num_slots,
-            gate_act=config.gate_act,
             use_output_gate=config.use_output_gate,
             use_norm=config.use_norm,
             gate_fn=config.hidden_act,

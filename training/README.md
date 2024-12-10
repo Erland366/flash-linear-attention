@@ -20,7 +20,8 @@ Clone the `fla` repository and install the necessary packages as follows:
 ```bash
 git clone https://github.com/sustcsonglin/flash-linear-attention.git
 pip install . 
-pip install accelerate
+pip install accelerate wandb
+pip3 install deepspeed
 ```
 
 > [!CAUTION]
@@ -37,6 +38,13 @@ For instance, to tokenize a 10B sample of the `fineweb-edu` dataset, run:
 python preprocess.py \
   --dataset HuggingFaceFW/fineweb-edu \
   --name sample-10BT \
+  --split train \
+  --context_length 2048
+```
+or an even smaller example, just for testing:
+```bash
+python preprocess.py \
+  --dataset alturing/gutenberg-texts \
   --split train \
   --context_length 2048
 ```
@@ -73,6 +81,23 @@ bash train.sh \
   data=HuggingFaceFW/fineweb-edu \
   name=sample-10BT \
   cache=data/HuggingFaceFW/fineweb-edu/sample-10BT/train
+```
+or for testing SCAN:
+```bash
+bash train.sh \
+  type=scan \
+  lr=3e-4 \
+  steps=1000 \
+  batch=8 \
+  update=1 \
+  warmup=100 \
+  context=2048 \
+  path=exp/scan-340M-test \
+  project=fla \
+  model=configs/scan_340M.json \
+  data=alturing/gutenberg-texts \
+  name=sample-10BT \
+  cache=data/alturing/gutenberg-texts/train
 ```
 
 `flame` also supports resuming interrupted training by specifying the checkpoint path. 
