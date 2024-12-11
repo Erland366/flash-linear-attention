@@ -19,6 +19,7 @@ echo "preprocessing:    ${preprocessing:=32}"
 echo "workers:          ${workers:=32}"
 echo "logging:          ${logging:=32}"
 echo "config:           ${config:=configs/deepspeed.yaml}"
+echo "push:             ${push:=False}"
 
 echo "lr:               ${lr:=3e-4}"
 echo "scheduler:        ${scheduler:=cosine_with_min_lr}"
@@ -69,6 +70,7 @@ params="--model_name_or_path $model \
     --gradient_accumulation_steps $update \
     --seed $seed \
     --logging_steps $logging \
+    --push_to_hub $push \
     --bf16"
 
 if [ $steps -gt 0 ]; then
