@@ -116,7 +116,7 @@ class SemiCompressedAttention(nn.Module):
 
         self.apply(self._initialize_weights)
 
-        self.alibi = build_alibi_tensor_scan(self.num_heads, self.max_position_embeddings, self.window_size, self.state_size)
+        self.register_buffer('alibi', build_alibi_tensor_scan(self.num_heads, self.max_position_embeddings, self.window_size, self.state_size))
         self.register_buffer('mask', scores_mask(self.max_position_embeddings, self.window_size, self.state_size))
 
     def _initialize_weights(self, module: nn.Module):
@@ -188,8 +188,9 @@ class SemiCompressedAttention(nn.Module):
                 s=s,
                 g=g,
                 window_size=self.window_size,
-                alibi=self.alibi,
-                mask=self.mask,
+                num_heads=self.num_heads,
+                alibi=self.alibi.to(q.device),
+                mask=self.mask.to(q.device),
                 initial_state=recurrent_state,
                 output_final_state=use_cache,
                 scale=self.scale,
