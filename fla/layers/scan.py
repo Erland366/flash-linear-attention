@@ -14,7 +14,7 @@ from einops import rearrange
 from fla.modules import RMSNorm
 from fla.modules.activations import swish, sigmoid
 from fla.modules.layernorm import rms_norm_linear
-from fla.ops.scan import parallel_scan #, recurrent_scan, naive_scan
+from fla.ops.scan import parallel_scan, naive_recurrent_scan
 
 if TYPE_CHECKING:
     from fla.models.utils import Cache
@@ -167,20 +167,24 @@ class SemiCompressedAttention(nn.Module):
         else:
             raise NotImplementedError(f"Gate activation `{self.gate_act}` is not supported.")
 
-        # Split heads (but merge with batch dimension because kernels receive (B T C) shape)
-        q = rearrange(q, 'b t (h c) -> (b h) t c', h=self.num_heads)
-        k = rearrange(k, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
-        v = rearrange(v, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
-        s = rearrange(s, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
-        g = rearrange(g, 'b t (h s) -> (b h) t s', h=self.num_kv_heads)
-
-        # dealing with left-padding
-        # if attention_mask is not None:
-        #     s = s.mul_(attention_mask[:, -s.shape[1]:, None, None])
-        #     v = v.mul_(attention_mask[:, -v.shape[1]:, None, None])
+        # KV cache is updated before going into SCAN
+        if past_key_values is not None:
+            k, v = past_key_values.update(
+                attn_state=(k, v),
+                layer_idx=self.layer_idx,
+                offset=q.shape[2],
+                # We actually don't want to crop to window for the initial prompt, only for subsequent autoregressive tokens
+                cache_kwargs=dict(window_size=self.window_size) if q.shape[2] == 1 else None
+            )['attn_state']
 
         recurrent_state = last_state['recurrent_state'] if last_state is not None else None
         if mode == 'parallel':
+            # Split heads (but merge with batch dimension because kernels receive (B T C) shape)
+            q = rearrange(q, 'b t (h c) -> (b h) t c', h=self.num_heads)
+            k = rearrange(k, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
+            v = rearrange(v, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
+            s = rearrange(s, 'b t (h c) -> (b h) t c', h=self.num_kv_heads)
+            g = rearrange(g, 'b t (h s) -> (b h) t s', h=self.num_kv_heads)
             o, recurrent_state = parallel_scan(
                 q=q,
                 k=k,
@@ -196,29 +200,38 @@ class SemiCompressedAttention(nn.Module):
                 scale=self.scale,
                 head_first=False
             )
-        elif mode == 'recurrent':
-            # TODO: Implement recurrent scan for inference
-            o, recurrent_state = recurrent_scan(
+            o = rearrange(o, '(b h) t c -> b t (h c)', h=self.num_heads)
+        elif mode == 'naive':
+            # TODO: Implement naive recurrent SCAN for inference
+            q = rearrange(q, 'b t (h c) -> b h t c', h=self.num_heads)
+            k = rearrange(k, 'b t (h c) -> b h t c', h=self.num_kv_heads)
+            v = rearrange(v, 'b t (h c) -> b h t c', h=self.num_kv_heads)
+            s = rearrange(s, 'b t (h c) -> b h t c', h=self.num_kv_heads)
+            g = rearrange(g, 'b t (h s) -> b h t s', h=self.num_kv_heads)
+            o, recurrent_state = naive_recurrent_scan(
                 q=q,
                 k=k,
                 v=v,
                 s=s,
                 g=g,
+                window_size=self.window_size,
+                alibi=self.alibi.to(q.device),
+                mask=self.mask.to(q.device),
                 initial_state=recurrent_state,
                 output_final_state=use_cache,
                 scale=self.scale,
                 head_first=False
             )
+            o = rearrange(o, 'b h t c -> b t (h c)', h=self.num_heads)
         else:
             raise NotImplementedError(f"Not supported mode `{mode}`.")
 
+        # Update the recurrent state after SCAN
         if past_key_values is not None:
             past_key_values.update(
                 recurrent_state=recurrent_state,
-                layer_idx=self.layer_idx,
-                offset=q.shape[2]
+                layer_idx=self.layer_idx
             )
 
-        o = rearrange(o, '(b h) t c -> b t (h c)', h=self.num_heads)
         o = rms_norm_linear(swish(o), self.norm.weight, self.norm.bias, self.o_proj.weight, self.o_proj.bias)
         return o, None, past_key_values

@@ -1,68 +1,56 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import torch
 from einops import repeat
 
 
-def naive_recurrent_gsa(
+def naive_recurrent_scan(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
     s: torch.Tensor,
-    g: Optional[torch.Tensor] = None,
+    g: torch.Tensor,
+    window_size: int,
+    alibi: torch.Tensor,
+    mask: torch.Tensor,
     scale: Optional[int] = None,
     initial_state: Optional[torch.Tensor] = None,
-    output_final_state: Optional[bool] = False
-) -> torch.Tensor:
-    dtype = q.dtype
-
-    NG = q.shape[1]//k.shape[1]
-    # [batch_size, n_heads, seq_len, n_slots]
-    if g is None:
-        z = s.float().logcumsumexp(2)
-        g = torch.cat((z[:, :, :1], z[:, :, :-1]), 2) - z
-        s = torch.exp(s - z)
-    q, k, v, s, g = map(lambda x: x.float(), (q, k, v, s, g))
-    k, v, s, g = map(lambda x: repeat(x, 'b h t d -> b (h g) t d', g=NG), (k, v, s, g))
-    if initial_state is not None:
-        initial_state = tuple(map(lambda x: repeat(x, 'b h k v -> b (h g) k v', g=NG), initial_state))
-
-    B, H, T, K, V, M = *q.shape, v.shape[-1], s.shape[-1]
-
-    hk = torch.zeros(B, H, K, M, dtype=torch.float, device=q.device)
-    ok = torch.zeros_like(s)
+    output_final_state: Optional[bool] = False,
+    head_first: Optional[bool] = True
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    B, H, T, C, W, S = *q.shape, window_size, s.shape[-1]
+    Tk = k.shape[2]
 
     if scale is None:
-        scale = q.shape[-1] ** -0.5
+        scale = C ** -0.5
 
-    final_state = None
-    if initial_state is not None:
-        hk += initial_state[0]
+    sg = torch.einsum("bhts, bhtc -> bhtsc", g, s) # (B, H, T, S, C)
+    gi = 1 - g # (B, H, T, S)
+    prev_state = initial_state if initial_state is not None else torch.zeros((B, H, S, C), device=q.device, dtype=q.dtype)
 
-    for i in range(T):
-        q_i = q[:, :, i] * scale
-        k_i = k[:, :, i]
-        v_i = s[:, :, i]
-        g_i = g[:, :, i].exp()
-        hk = hk * g_i[..., None, :] + k_i[..., None] * v_i[..., None, :]
-        ok[:, :, i] = (q_i[..., None] * hk).sum(-2)
+    for t in range(T):
+        prev_state = torch.einsum("bhs, bhsc -> bhtsc", gi[:, :, t], prev_state) # (B, H, S, C)
+        state = prev_state + sg[:, :, t] # (B, H, S, C)
 
-    qv = ok.softmax(-1)
-    hv = torch.zeros(B, H, M, V, dtype=torch.float, device=q.device)
-    ov = torch.zeros_like(v)
-    if initial_state is not None:
-        hv += initial_state[1]
+        k_window = k[:, :, max(0, t - W):t] # (B, H, W, C)
+        v_window = v[:, :, max(0, t - W):t]
+        Tw = k_window.shape[-2]
+        # if the window crop is less than W, pad with zeros on the left
+        if Tw < W:
+            k_window = torch.cat((torch.zeros((B, H, W - Tw, C), device=k.device, dtype=k.dtype), k_window), dim=2)
+            v_window = torch.cat((torch.zeros((B, H, W - Tw, C), device=v.device, dtype=v.dtype), v_window), dim=2)
 
-    for i in range(T):
-        q_i = qv[:, :, i]
-        k_i = s[:, :, i]
-        v_i = v[:, :, i]
-        g_i = g[:, :, i].exp()
-        hv = hv * g_i[..., :, None] + k_i[..., None] * v_i[..., None, :]
-        ov[:, :, i] = (q_i[..., None] * hv).sum(-2)
+        all_keys = torch.cat((state, k), dim=2) # (B, H, S, C) + (B, H, W, C) -> (B, H, S+W, C)
+        all_values = torch.cat((state, v), dim=2) # (B, H, S, C) + (B, H, W, C) -> (B, H, S+W, C)
+        scores = torch.einsum("bhc, bhxc -> bhx", q[:, :, 0], all_keys) * scale # (B, H, C) @ (B, H, S+W, C) -> (B, H, S+W)
+        scores += alibi[:, Tw] # (B, H, S+W)
+        scores = scores.masked_fill(mask[:, Tw], float("-inf"))
+        scores = torch.softmax(scores, dim=-1)
+        out = torch.einsum("bhx, bhxc -> bhc", scores, all_values)
 
-    if output_final_state:
-        final_state = (hk.view(B, -1, NG, K, M)[:, :, 0], hv.view(B, -1, NG, M, V)[:, :, 0])
-    return ov.to(dtype), final_state
+        prev_state = state
+    final_state = prev_state
+
+    return out, final_state

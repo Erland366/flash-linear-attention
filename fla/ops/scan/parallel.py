@@ -882,7 +882,7 @@ def parallel_scan(
     alibi: torch.Tensor,
     mask: torch.Tensor,
     scale: Optional[int] = None,
-    initial_state: Optional[Tuple[torch.Tensor]] = None,
+    initial_state: Optional[torch.Tensor] = None,
     output_final_state: Optional[bool] = False,
     checkpoint_level: Optional[int] = 2,
     offsets: Optional[torch.LongTensor] = None,
@@ -979,21 +979,17 @@ def parallel_scan(
     if scale is None:
         scale = q.shape[-1] ** -0.5
 
-    hk0, hv0 = None, None
-    if initial_state is not None:
-        hk0, hv0 = initial_state
-
     BH, T, S = g.shape
     # Do semi-compressed attention
     sg = torch.einsum('bts,btc->btsc', g, s)
     gi = 1 - g 
-    s = CumulativeGating2DTriton.apply(sg, gi) # states (B*H, T, S, C) at all time steps
-    scores = AttendFoldedAllKeysTriton.apply(q, k, s, window_size) * scale # scores (B*H, T, S+W)
+    states = CumulativeGating2DTriton.apply(sg, gi) # states (B*H, T, S, C) at all time steps
+    scores = AttendFoldedAllKeysTriton.apply(q, k, states, window_size) * scale # scores (B*H, T, S+W)
     # bring back to (B, H, T, S+W) to apply alibi with shape (H, T, S+W)
     scores = scores.view(-1, num_heads, T, S + window_size) + alibi[:, :T]
     scores = scores.masked_fill(mask[:T] == 0, float('-inf'))
     scores = torch.softmax(scores, dim=-1).view(BH, T, S + window_size)
-    o = AccumulateFoldedAllValuesTriton.apply(scores, v, s, window_size) # outputs (B*H, T, C)
+    o = AccumulateFoldedAllValuesTriton.apply(scores, v, states, window_size) # outputs (B*H, T, C)
 
     final_state = None # TODO: fix for inference
     return o, final_state
