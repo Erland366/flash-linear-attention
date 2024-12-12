@@ -145,7 +145,7 @@ class SemiCompressedAttention(nn.Module):
             )
 
         # launching the triton kernel for just one token will actually be slower
-        mode = 'fused_recurrent' if hidden_states.shape[1] == 1 else self.mode
+        mode = 'naive' if past_key_values is not None else self.mode
 
         if self.norm_first:
             hidden_states = self.norm(hidden_states)
@@ -174,7 +174,7 @@ class SemiCompressedAttention(nn.Module):
                 layer_idx=self.layer_idx,
                 offset=q.shape[2],
                 # We actually don't want to crop to window for the initial prompt, only for subsequent autoregressive tokens
-                cache_kwargs=dict(window_size=self.window_size) if q.shape[2] == 1 else None
+                cache_kwargs=dict(window_size=self.window_size) if q.shape[2] == 1 else dict()
             )['attn_state']
 
         recurrent_state = last_state['recurrent_state'] if last_state is not None else None
@@ -216,7 +216,7 @@ class SemiCompressedAttention(nn.Module):
                 g=g,
                 window_size=self.window_size,
                 alibi=self.alibi.to(q.device),
-                mask=self.mask.to(q.device),
+                mask=self.mask.to(q.device).to(torch.bool),
                 initial_state=recurrent_state,
                 output_final_state=use_cache,
                 scale=self.scale,
