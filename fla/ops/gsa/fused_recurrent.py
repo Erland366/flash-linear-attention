@@ -549,7 +549,7 @@ def fused_recurrent_gsa(
         scale = k.shape[-1] ** -0.5
     if initial_state is None:
         initial_state = (None, None)
-    o, *final_state = FusedRecurrentGSAFunction.apply(
+    o, final_state = FusedRecurrentGSAFunction.apply(
         q,
         k,
         v,
