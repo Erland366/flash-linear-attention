@@ -218,7 +218,7 @@ def fused_linear_cross_entropy_forward(
     # we use fp32 for loss accumulator
     loss = torch.zeros(N, dtype=torch.float32, device=device)
 
-    total = target.ne(ignore_index).sum().to(torch.int64)
+    total = target.ne(ignore_index).sum().item()
 
     for ic in range(NC):
         start, end = ic * C, min((ic + 1) * C, N)
