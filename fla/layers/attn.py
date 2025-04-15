@@ -184,7 +184,7 @@ class Attention(nn.Module):
         o = o.reshape(batch_size, q_len, -1)
         o = self.o_proj(o)
 
-        if not output_attentions or "parallel" in self.attn_impl or "flash" in self.attn_impl
+        if not output_attentions or "parallel" in self.attn_impl or "flash" in self.attn_impl:
             attentions = None
 
         return o, attentions, past_key_values
