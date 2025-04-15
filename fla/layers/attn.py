@@ -175,16 +175,16 @@ class Attention(nn.Module):
         elif self.attn_impl == "parallel_rectified_attn":
             o = parallel_rectified_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "naive_attn":
-            o = naive_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+            o, attentions = naive_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "naive_rectified_attn":
-            o = naive_rectified_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+            o, attentions = naive_rectified_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         else:
             raise ValueError(f"Unknown attention implementation: {self.attn_impl}")
 
         o = o.reshape(batch_size, q_len, -1)
         o = self.o_proj(o)
 
-        if not output_attentions:
+        if not output_attentions or "parallel" in self.attn_impl or "flash" in self.attn_impl
             attentions = None
 
         return o, attentions, past_key_values

@@ -25,4 +25,4 @@ def naive_attn(
     o = torch.matmul(wei, v) # shape: (batch_size, num_heads, q_len, head_dim)
     if not head_first:
         o = rearrange(o, 'b h t d -> b t h d')
-    return o
+    return o, wei
