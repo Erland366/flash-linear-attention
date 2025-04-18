@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from typing import Optional
 from einops import rearrange
 
-def softpick(x, dim=-1):
+def softpick(x, dim=-1, eps=1e-8):
     # softpick function: relu(exp(x)-1) / sum(abs(exp(x)-1))
     # numerically stable version
     x_m = torch.max(x, dim=dim, keepdim=True).values
@@ -11,7 +11,7 @@ def softpick(x, dim=-1):
     x_e_1 = torch.exp(x - x_m) - x_m_e_m
     r_x_e_1 = F.relu(x_e_1)
     a_x_e_1 = torch.where(x.isfinite(), torch.abs(x_e_1), 0)
-    return r_x_e_1 / (torch.sum(a_x_e_1, dim=dim, keepdim=True))
+    return r_x_e_1 / (torch.sum(a_x_e_1, dim=dim, keepdim=True) + eps) # epsilon is only useful if all inputs are EXACTLY 0. we might not even need it
 
 def naive_softpick_attn(
     q: torch.Tensor,
