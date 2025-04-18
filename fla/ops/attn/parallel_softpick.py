@@ -126,7 +126,7 @@ def parallel_softpick_attn_fwd_kernel(
         b_o = b_o * b_r[:, None] + tl.dot(b_p_r.to(b_q.dtype), b_v)
 
         b_mp = b_m
-    b_acc += 1e-8 # harcoded epsilon... sorry
+    b_acc += 1e-6 # harcoded epsilon... sorry
     b_o = b_o / b_acc[:, None]
     b_m += log(b_acc)
     tl.store(p_o, b_o.to(p_o.dtype.element_ty), boundary_check=(0, 1))
