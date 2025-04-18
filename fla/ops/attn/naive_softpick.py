@@ -13,7 +13,7 @@ def softpick(x, dim=-1):
     a_x_e_1 = torch.where(x.isfinite(), torch.abs(x_e_1), 0)
     return r_x_e_1 / (torch.sum(a_x_e_1, dim=dim, keepdim=True))
 
-def torch_softpick_attn(
+def naive_softpick_attn(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
