@@ -72,11 +72,20 @@ class Attention(nn.Module):
         self.v_proj = nn.Linear(self.hidden_size, self.kv_dim, bias=self.qkv_bias)
         self.o_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=False)
 
+        if "scaled" in self.attn_impl:
+            self.s = nn.Parameter(torch.empty(self.num_heads, 1))
+            self.register_buffer("logn", torch.log(torch.arange(2, self.max_position_embeddings*4+2, dtype=self.s.dtype)[:, None, None]))
+
         if qk_norm:
             self.q_norm = RMSNorm(self.head_dim)
             self.k_norm = RMSNorm(self.head_dim)
 
         self.rotary = RotaryEmbedding(dim=self.head_dim, base=self.rope_theta)
+
+    def reset_parameters(self):
+        if "scaled" in self.attn_impl:
+            nn.init.constant_(self.s, 0.3)
+            self.logn.copy_(torch.log(torch.arange(2, self.max_position_embeddings*4+2, dtype=self.s.dtype)[:, None, None]))
 
     def forward(
         self,
@@ -138,6 +147,10 @@ class Attention(nn.Module):
         if flash_attn_func is None:
             raise ImportError("Please install Flash Attention via `pip install flash-attn --no-build-isolation` first")
 
+        if "scaled" in self.attn_impl:
+            k_len = k.shape[1]
+            q = q * self.s.to(q.dtype) * self.logn[k_len-q_len:k_len].to(q.dtype)
+
         # Contains at least one padding token in the sequence
         if self.attn_impl == "flash_attn":
             if attention_mask is not None:
@@ -172,15 +185,23 @@ class Attention(nn.Module):
                 )
         elif self.attn_impl == "parallel_attn":
             o = parallel_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+        elif self.attn_impl == "parallel_scaled_attn":
+            o = parallel_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "parallel_rectified_attn":
             o = parallel_rectified_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "parallel_softpick_attn":
             o = parallel_softpick_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+        elif self.attn_impl == "parallel_scaled_softpick_attn":
+            o = parallel_softpick_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "naive_attn":
+            o, attentions = naive_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+        elif self.attn_impl == "naive_scaled_attn":
             o, attentions = naive_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "naive_rectified_attn":
             o, attentions = naive_rectified_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         elif self.attn_impl == "naive_softpick_attn":
+            o, attentions = naive_softpick_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
+        elif self.attn_impl == "naive_scaled_softpick_attn":
             o, attentions = naive_softpick_attn(q, k, v, scale=self.head_dim**-0.5, cu_seqlens=cu_seqlens)
         else:
             raise ValueError(f"Unknown attention implementation: {self.attn_impl}")
