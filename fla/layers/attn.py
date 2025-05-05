@@ -46,6 +46,7 @@ class Attention(nn.Module):
         max_position_embeddings: Optional[int] = None,
         layer_idx: int = None,
         attn_impl: str = "flash_attn",
+        scale_base: Optional[float] = None
     ):
         super().__init__()
 
@@ -66,6 +67,7 @@ class Attention(nn.Module):
         self.max_position_embeddings = max_position_embeddings
         self.layer_idx = layer_idx
         self.attn_impl = attn_impl
+        self.scale_base = scale_base
 
         self.q_proj = nn.Linear(self.hidden_size, self.hidden_size, bias=self.qkv_bias)
         self.k_proj = nn.Linear(self.hidden_size, self.kv_dim, bias=self.qkv_bias)
@@ -80,7 +82,7 @@ class Attention(nn.Module):
             self.q_norm = RMSNorm(self.head_dim)
             self.k_norm = RMSNorm(self.head_dim)
 
-        self.rotary = RotaryEmbedding(dim=self.head_dim, base=self.rope_theta)
+        self.rotary = RotaryEmbedding(dim=self.head_dim, base=self.rope_theta, scale_base=self.scale_base)
 
     def reset_parameters(self):
         if "scaled" in self.attn_impl:
